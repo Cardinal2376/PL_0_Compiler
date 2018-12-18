@@ -1,0 +1,5 @@
+# cat .gitignore
+*.xml
+*.log
+*.apk
+*.txt
