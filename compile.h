@@ -61,6 +61,8 @@ void term(int lev, bool* fsys);
 void condition(int lev, bool* fsys);
 void expression(int lev, bool* fsys);
 void statement(int lev, bool* fsys);
+void statement_item(int lev, bool* fsys);
+void statement_single_item(int lev, bool* fsys);
 void listall();
 int position();
 void enter(enum object k, int lev, int* pdx);

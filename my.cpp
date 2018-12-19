@@ -199,11 +199,18 @@ void init() {
 void compile() {
     //fin = fopen("C:\\Users\\10152130143\\Desktop\\sw_compiler-master\\sw_lcm.txt", "r");
     //fin = stdin;
+    /*
     fin = fopen("/Users/cardinal/PL0_Compiler/test_lcm.txt", "r");
     ftable = fopen("/Users/cardinal/PL0_Compiler/ftable.txt", "w");
     fdebug = fopen("/Users/cardinal/PL0_Compiler/fdebug.txt", "w");
     ferrors = fopen("/Users/cardinal/PL0_Compiler/ferrors.txt", "w");
     fresult = fopen("/Users/cardinal/PL0_Compiler/fresult.txt", "w");
+    */
+    fin = fopen("test_lcm.txt", "r");
+    ftable = fopen("ftable.txt", "w");
+    fdebug = fopen("fdebug.txt", "w");
+    ferrors = fopen("ferrors.txt", "w");
+    fresult = fopen("fresult.txt", "w");
     
     init();        /* 初始化 */
     
@@ -263,6 +270,7 @@ void mulset(bool* sr, bool* s1, bool* s2, int n) {
  *  出错处理，打印出错位置和错误编码
  */
 void error(int n) {
+    printf("第 %d 行 错误: %s\n", linenum, errorinfo[n]);
     fprintf(ferrors, "第 %d 行 错误: %s\n", linenum, errorinfo[n]);
     err = err + 1;
     if (err > maxerr) {
@@ -397,6 +405,7 @@ void getsym() {
 /*
  to get a single character
  */
+
 void getch() {
     if(current_char == line_length) {
         //if char remain in buffer, o.w. get another char
@@ -607,230 +616,250 @@ void vardeclaration(int lev, int* pdx, symbol last_sym) {
 /*
  * statement process
  */
-void statement(int lev, bool* fsys) {
+void statement(int lev, bool* fsys) {    
+    while(inset(sym, statbegsys)) {
+        statement_item(lev, fsys);
+    }
+}
+
+void statement_item(int lev, bool* fsys) {
     int cx1, cx2;
     bool nxtlev[symnum];
-    while(inset(sym, statbegsys)) {
-        if(sym == ifsym) {
-            getsym();
-            if(sym == lparen) {
-                getsym();    //缺少左括号
-            } else {
-                error(17);
-            }
-            memcpy(nxtlev, fsys, sizeof(bool) * symnum);
-            nxtlev[lbrace] = true;
-            condition(lev, nxtlev); /* 调用条件处理 */
-            if(sym == rparen) {
-                getsym();    //缺少左括号
-            } else {
-                error(16);
-            }
-            cx1 = cx;   /* 保存当前指令地址 */
-            gen(jpc, 0, 0); /* 生成条件跳转指令，跳转地址未知，暂时写0 */
-            if (sym == lbrace) {
-                getsym();
-            } else {
-                error(20);
-            }
-            nxtlev[rbrace] = true;
-            nxtlev[elsesym] = true;
-            statement(lev, nxtlev);  /* 处理then后的语句 */
-            cx2 = cx;
-            gen(jmp, 0, 0);
-            code[cx1].a = cx;   /* 经statement处理后，cx为then后语句执行完的位置，它正是前面未定的跳转地址，此时进行回填 */
-            if (sym == rbrace) getsym();
-            else error(21);
-            if (sym == elsesym) {
-                getsym();
-                if (sym == lbrace) getsym();
-                else error(20);
-                
-                memcpy(nxtlev, fsys, sizeof nxtlev);
-                nxtlev[rbrace] = true;
-                statement(lev, nxtlev);
-                
-                if (sym == rbrace) getsym();
-                else error(21);
-            }
-            code[cx2].a = cx;
-        } else if (sym == whilesym) {  /* 准备按照while语句处理 */
-            cx1 = cx;   /* 保存判断条件操作的位置 */
-            getsym();
-            if(sym == lparen) {
-                getsym();    //缺少左括号
-            } else {
-                error(17);
-            }
-            
-            memcpy(nxtlev, fsys, sizeof(bool) * symnum);
-            nxtlev[lbrace] = true;  /* 后继符号为do */
-            condition(lev, nxtlev);    /* 调用条件处理 */
-            cx2 = cx;   /* 保存循环体的结束的下一个位置 */
-            gen(jpc, 0, 0); /* 生成条件跳转，但跳出循环的地址未知，标记为0等待回填 */
-            if(sym == rparen) {
-                getsym();
-            } else {
-                error(16); //缺少右括号
-            }
-            if (sym == lbrace) {
-                getsym();
-            } else {
-                error(20);  /* 缺少do */
-            }
-            memcpy(nxtlev, fsys, sizeof nxtlev);
-            nxtlev[rbrace] = true;
-            statement(lev, nxtlev);  /* 循环体 */
-            if (sym == rbrace) getsym();
-            else error(21);
-            gen(jmp, 0, cx1);   /* 生成条件跳转指令，跳转到前面判断条件操作的位置 */
-            code[cx2].a = cx;   /* 回填跳出循环的地址 */
-        } else if(sym == forsym) {
-            getsym();
-            if(sym == lparen) {
-                getsym();    //缺少左括号
-            } else {
-                error(17);
-            }
-            memcpy(nxtlev, fsys, sizeof nxtlev);
-            nxtlev[semicolon] = true;
-            statement(lev, fsys);
-            if(sym != semicolon) {
-                error(9);
-            } else {
-                cx1 = cx;   /* 保存判断条件操作的位置 */
-                condition(lev, nxtlev);    /* 调用条件处理 */
-                cx2 = cx;   /* 保存循环体的结束的下一个位置 */
-                gen(jpc, 0, 0); /* 生成条件跳转，但跳出循环的地址未知，标记为0等待回填 */
-                
-                statement(lev, nxtlev);
-                
-                if(sym == rparen) {
-                    getsym();
-                } else {
-                    error(16); //缺少右括号
-                }
-                
-                gen(jmp, 0, cx1);
-                
-                if (sym == lbrace) {
-                    getsym();
-                } else {
-                    error(20);
-                }
-                memcpy(nxtlev, fsys, sizeof nxtlev);
-                nxtlev[rbrace] = true;
-                statement(lev, nxtlev);
-                
-                if (sym == rbrace) {
-                    getsym();
-                } else {
-                    error(21);
-                }
-                gen(jmp, 0, cx2+1);
-            }
+    if(sym == ifsym) {
+        getsym();
+        if(sym == lparen) {
+            getsym();    //缺少左括号
         } else {
-            if(sym == ident) {          //treated as assignment statement
-                int pos = position();
-                if(pos == -1) {
-                    error(6);         //none declare ident
-                } else {
-                    tableStruct item = table[pos];
-                    if(pos == -1 || item.kind != variable) {
-                        error(7);    //For assignement, ident must be on the left size
-                    } else{
-                        getsym();
-                        if(sym == add) {
-                            gen(lod, lev - item.level, item.addr);
-                            gen(lit, 0, 1);
-                            gen(opr, 0, 2);
-                            gen(sto, lev - item.level, item.addr);
-                            getsym();
-                        } else if(sym == sub) {
-                            gen(lod, lev - item.level, item.addr);
-                            gen(lit, 0, 1);
-                            gen(opr, 0, 3);
-                            gen(sto, lev - item.level, item.addr);
-                            getsym();
-                        } else {
-                            if(sym == becomes) {
-                                getsym();
-                            } else {
-                                error(8); //do not have assignment symbol
-                            }
-                            memcpy(nxtlev, fsys, sizeof(bool) * symnum);
-                            expression(lev, nxtlev); //to handle expression right to the assignment symbol
-                            
-                            gen(sto, lev - item.level, item.addr);
-                            
-                        }
-                    }
-                }
-                
-            } else if(sym == readsym) {
+            error(17);
+        }
+        memcpy(nxtlev, fsys, sizeof(bool) * symnum);
+        nxtlev[lbrace] = true;
+        condition(lev, nxtlev); /* 调用条件处理 */
+        if(sym == rparen) {
+            getsym();    //缺少左括号
+        } else {
+            error(16);
+        }
+        cx1 = cx;   /* 保存当前指令地址 */
+        gen(jpc, 0, 0); /* 生成条件跳转指令，跳转地址未知，暂时写0 */
+        if (sym == lbrace) {
+            getsym();
+        } else {
+            error(20);
+        }
+        nxtlev[rbrace] = true;
+        nxtlev[elsesym] = true;
+        statement(lev, nxtlev);  /* 处理then后的语句 */
+        cx2 = cx;
+        gen(jmp, 0, 0);
+        code[cx1].a = cx;   /* 经statement处理后，cx为then后语句执行完的位置，它正是前面未定的跳转地址，此时进行回填 */
+        if (sym == rbrace) getsym();
+        else error(21);
+        if (sym == elsesym) {
+            getsym();
+            if (sym == lbrace) getsym();
+            else error(20);
+            
+            memcpy(nxtlev, fsys, sizeof nxtlev);
+            nxtlev[rbrace] = true;
+            statement(lev, nxtlev);
+            
+            if (sym == rbrace) getsym();
+            else error(21);
+        }
+        code[cx2].a = cx;
+    } else if (sym == whilesym) {  /* 准备按照while语句处理 */
+
+        cx1 = cx;   /* 保存判断条件操作的位置 */
+        getsym();
+        if(sym == lparen) {
+            getsym();    //缺少左括号
+        } else {
+            error(17);
+        }
+        
+        memcpy(nxtlev, fsys, sizeof(bool) * symnum);
+        nxtlev[lbrace] = true;  /* 后继符号为do */
+        condition(lev, nxtlev);    /* 调用条件处理 */
+        cx2 = cx;   /* 保存循环体的结束的下一个位置 */
+        
+        gen(jpc, 0, 0); /* 生成条件跳转，但跳出循环的地址未知，标记为0等待回填 */
+        if(sym == rparen) {
+            getsym();
+        } else {
+            error(16); //缺少右括号
+        }
+        if (sym == lbrace) {
+            getsym();
+        } else {
+            error(20);  /* 缺少do */
+        }
+        memcpy(nxtlev, fsys, sizeof nxtlev);
+        nxtlev[rbrace] = true;
+        statement(lev, nxtlev);  /* 循环体 */
+        if (sym == rbrace) getsym();
+        else error(21);
+        gen(jmp, 0, cx1);   /* 生成条件跳转指令，跳转到前面判断条件操作的位置 */
+        code[cx2].a = cx;   /* 回填跳出循环的地址 */
+    } else if(sym == forsym) {
+        getsym();
+        if(sym == lparen) {
+            getsym();    //缺少左括号
+        } else {
+            error(17);
+        }
+        memcpy(nxtlev, fsys, sizeof nxtlev);
+        nxtlev[semicolon] = true;
+        statement_single_item(lev, fsys);
+        if(sym == semicolon) {
+            getsym();
+        } else {
+            error(9);
+        }
+        cx1 = cx;   /* 保存判断条件操作的位置 */
+        condition(lev, nxtlev);    /* 调用条件处理 */
+        cx2 = cx;   /* 保存循环体的结束的下一个位置 */
+        gen(jpc, 0, 0); /* 生成条件跳转，但跳出循环的地址未知，标记为0等待回填 */
+        gen(jmp, 0, 0); /* jmp 到内部语句开始的位置，回填 */
+        //statement(lev, nxtlev);
+        if(sym == semicolon) {
+            getsym();
+        } else {
+            error(9);
+        }
+        //int cx3 = cx;
+        statement_single_item(lev, nxtlev);
+        gen(jmp, 0, cx1);
+        if(sym == rparen) {
+            getsym();
+        } else {
+            error(16); //缺少右括号
+        }
+                        
+        if (sym == lbrace) {
+            getsym();
+        } else {
+            error(20);
+        }
+        code[cx2+1].a = cx;
+        memcpy(nxtlev, fsys, sizeof nxtlev);
+        nxtlev[rbrace] = true;
+        statement(lev, nxtlev);
+        
+        if (sym == rbrace) {
+            getsym();
+        } else {
+            error(21);
+        }
+        gen(jmp, 0, cx2+2);
+        code[cx2].a = cx;
+    } else {
+        statement_single_item(lev, fsys);
+        if(sym == semicolon) {
+            getsym();
+        } else {
+            error(1);
+        }
+    }
+}
+
+void statement_single_item(int lev, bool* fsys) {
+    int cx1, cx2;
+    bool nxtlev[symnum];
+    if(sym == ident) {          //treated as assignment statement
+        int pos = position();
+        if(pos == -1) {
+            error(6);         //none declare ident
+        } else {
+            tableStruct item = table[pos];
+            if(pos == -1 || item.kind != variable) {
+                error(7);    //For assignement, ident must be on the left size
+            } else{
                 getsym();
-                int pos;
-                if (sym == ident) {
-                    pos = position(); /* 查找要读的变量 */
-                }
-                if(pos == -1 || sym != ident) {
-                    error(18);  /* read语句括号中的标识符应该是声明过的变量 */
-                } else {
-                    gen(opr, 0, 16);    /* 生成输入指令，读取值到栈顶 */
-                    gen(sto, lev - table[pos].level, table[pos].addr); /* 将栈顶内容送入变量单元中 */
+                if(sym == add) {
+                    gen(lod, lev - item.level, item.addr);
+                    gen(lit, 0, 1);
+                    gen(opr, 0, 2);
+                    gen(sto, lev - item.level, item.addr);
                     getsym();
-                }
-                while (!inset(sym, fsys)) { // 出错补救，直到遇到上层函数的后继符号，对这段代码保留意见
+                } else if(sym == sub) {
+                    gen(lod, lev - item.level, item.addr);
+                    gen(lit, 0, 1);
+                    gen(opr, 0, 3);
+                    gen(sto, lev - item.level, item.addr);
                     getsym();
-                }
-                
-            } else if(sym == writesym) {
-                getsym();
-                int pos;
-                if (sym == ident) {
-                    pos = position();
-                }
-                if(pos == -1){
-                    error(18);
                 } else {
-                    memcpy(nxtlev, fsys, sizeof nxtlev);
-                    expression(lev, nxtlev);
-                    gen(opr, 0, 14);
-                    gen(opr, 0, 15);
-                }
-            } else if(sym == callsym) {
-                getsym();
-                if (sym != ident) {
-                    error(0);   /* call后应为标识符 */
-                } else {
-                    int pos  = position();
-                    if (pos == -1) {
-                        error(6);   /* 过程名未找到 */
-                    } else {
-                        tableStruct item = table[pos];
-                        if (item.kind == function) {
-                            gen(cal, lev-item.level, item.addr); /* 生成call指令 */
-                        } else {
-                            error(31);  /* call后标识符类型应为过程 */
-                        }
-                    }
-                    getsym();
-                    if (sym == lparen) {
+                    if(sym == becomes) {
                         getsym();
                     } else {
-                        error(19);
+                        error(8); //do not have assignment symbol
                     }
-                    if (sym == rparen) {
-                        getsym();
-                    } else {
-                        error(19);
-                    }
+                    memcpy(nxtlev, fsys, sizeof(bool) * symnum);
+                    expression(lev, nxtlev); //to handle expression right to the assignment symbol
+                    
+                    gen(sto, lev - item.level, item.addr);
+                    
                 }
             }
-            if(sym == semicolon) {
+        }
+        
+    } else if(sym == readsym) {
+        getsym();
+        int pos;
+        if (sym == ident) {
+            pos = position(); /* 查找要读的变量 */
+        }
+        if(pos == -1 || sym != ident) {
+            error(18);  /* read语句括号中的标识符应该是声明过的变量 */
+        } else {
+            gen(opr, 0, 16);    /* 生成输入指令，读取值到栈顶 */
+            gen(sto, lev - table[pos].level, table[pos].addr); /* 将栈顶内容送入变量单元中 */
+            getsym();
+        }
+        while (!inset(sym, fsys)) { // 出错补救，直到遇到上层函数的后继符号，对这段代码保留意见
+            getsym();
+        }
+        
+    } else if(sym == writesym) {
+        getsym();
+        int pos;
+        if (sym == ident) {
+            pos = position();
+        }
+        if(pos == -1){
+            error(18);
+        } else {
+            memcpy(nxtlev, fsys, sizeof nxtlev);
+            expression(lev, nxtlev);
+            gen(opr, 0, 14);
+            gen(opr, 0, 15);
+        }
+    } else if(sym == callsym) {
+        getsym();
+        if (sym != ident) {
+            error(0);   /* call后应为标识符 */
+        } else {
+            int pos  = position();
+            if (pos == -1) {
+                error(6);   /* 过程名未找到 */
+            } else {
+                tableStruct item = table[pos];
+                if (item.kind == function) {
+                    gen(cal, lev-item.level, item.addr); /* 生成call指令 */
+                } else {
+                    error(31);  /* call后标识符类型应为过程 */
+                }
+            }
+            getsym();
+            if (sym == lparen) {
                 getsym();
             } else {
-                error(1);
+                error(19);
+            }
+            if (sym == rparen) {
+                getsym();
+            } else {
+                error(19);
             }
         }
     }
