@@ -25,7 +25,8 @@ enum symbol {
     whilesym,    writesym,  readsym,    range,     callsym,
     intsym,      funcsym,   forsym,     insym,     lbrace,
     rbrace,      mod,       add,        sub,       constsym,
-    oddsym,      repeatsym, charsym,
+    oddsym,      repeatsym, charsym,    lbracket,  rbracket,
+    array
 };
 
 
@@ -34,6 +35,7 @@ enum object {
     constant,
     variable,
     function,
+    vector
 };
 
 /* 虚拟机代码指令 */

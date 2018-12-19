@@ -68,7 +68,7 @@ bool declbegsys[symnum];    /* 表示声明开始的符号集合 */
 bool statbegsys[symnum];    /* 表示语句开始的符号集合 */
 bool facbegsys[symnum];     /* 表示因子开始的符号集合 */
 
-FILE* fin;      /* 输入源文件 */
+FILE* fin;      /* 输入源文件 */ 
 FILE* ftable;
 FILE* fdebug;
 FILE* ferrors;
@@ -83,8 +83,10 @@ std::vector<std::string> symbol_word {
     "whilesym", "writesym", "readsym",  "range",    "callsym",
     "intsym",   "funcsym",  "forsym",   "insym",    "lbrace",
     "rbrace",   "mod",      "add",      "sub",      "constsym",
-    "oddsym",   "repeatsym", "charsym"
+    "oddsym",   "repeatsym", "charsym", "lbracket", "rbracket",
+    "array"
 };
+int arr_num;
 int err;        /* ERROR Counter */
 char errorinfo[100][100];
 
@@ -104,6 +106,8 @@ void init() {
     ssym['='] = becomes;
     ssym['$'] = period;
     ssym[';'] = semicolon;
+    ssym['['] = lbracket;
+    ssym[']'] = rbracket;
     
     /* initialize the key word symbol map */
     wsym["call"] = callsym;
@@ -148,11 +152,13 @@ void init() {
     statbegsys[readsym] = true;
     statbegsys[writesym] = true;
     statbegsys[ident] = true;
+    statbegsys[array] = true;
     statbegsys[forsym] = true;
     statbegsys[repeatsym] = true;
     
     /* 设置因子开始符号集 */
     facbegsys[ident] = true;
+    facbegsys[array] = true;
     facbegsys[number] = true;
     facbegsys[lparen] = true;
     
@@ -187,7 +193,10 @@ void init() {
     strcpy(errorinfo[32], "常量声明中的=后应是数字");
     strcpy(errorinfo[33], "repeat后缺少while");
     strcpy(errorinfo[34], "不能识别的符号");
-    
+    strcpy(errorinfo[35], "缺少']'");
+    strcpy(errorinfo[36], "定义出错");
+    strcpy(errorinfo[37], "数组下标越界");
+
     err = 0;
     current_char = line_length = 0;
     ch = ' ';
@@ -303,6 +312,26 @@ void getsym() {
             sym = wsym[ident_in];
         } else {
             sym = ident;
+        }
+
+        if(sym == ident && ch == '[') {
+            getch();
+            arr_num = 0;
+            int k = 0;
+            sym = array;
+            do {
+                arr_num = 10 * arr_num + ch - '0';
+                k++;
+                getch();
+            } while(isdigit(ch));
+            if(k > nmax) {
+                error(14);
+            }
+            if(ch == ']') {
+                getch();
+            } else {
+                error(35);
+            }
         }
     } else if(isdigit(ch)){
         num = 0;
@@ -500,15 +529,15 @@ void block(int lev, bool* fsys) {
         while(sym == intsym || sym == charsym) { /* to handle declaration statement */
             symbol last_sym = sym;
             getsym();
-            vardeclaration(lev, &dx, last_sym);
+            vardeclaration(lev, &dx, last_sym);    
+            
             if (sym == semicolon) {
                 getsym();
             } else {
                 error(9); /* 漏掉了分号 */
             }
             printf("processing declaration\n");
-        }
-        
+        }        
         if (sym == period) break;
         //memcpy(nxtlev, statbegsys, sizeof(bool) * symnum);
         //nxtlev[ident] = true;
@@ -578,6 +607,13 @@ void enter(enum object k, int lev, int* pdx, symbol last_sym) {
         case function:  /* 过程 */
             table_item.level = lev;
             break;
+        case vector:
+            table_item.level = lev;
+            table_item.addr = (*pdx);
+            table_item.type = last_sym == intsym ? 0 : 1;
+            table_item.size = arr_num;
+            (*pdx) += arr_num;
+            break;
     }
     table.push_back(table_item);
 }
@@ -607,11 +643,13 @@ void vardeclaration(int lev, int* pdx, symbol last_sym) {
     if (sym == ident) {
         enter(variable, lev, pdx, last_sym); // 填写符号表
         getsym();
+    } else if(sym == array){
+        enter(vector, lev, pdx, last_sym); // 填写符号表
+        getsym();
     } else {
         error(0);   /* var后面应是标识符 */
     }
 }
-
 
 /*
  * statement process
@@ -766,27 +804,34 @@ void statement_item(int lev, bool* fsys) {
 void statement_single_item(int lev, bool* fsys) {
     int cx1, cx2;
     bool nxtlev[symnum];
-    if(sym == ident) {          //treated as assignment statement
+    if(sym == ident || sym == array) {          //treated as assignment statement
         int pos = position();
+        int index = 0;
         if(pos == -1) {
             error(6);         //none declare ident
         } else {
             tableStruct item = table[pos];
-            if(pos == -1 || item.kind != variable) {
+            if(pos == -1 || item.kind != variable && item.kind != vector) {
                 error(7);    //For assignement, ident must be on the left size
             } else{
+                if(sym == array) {
+                    index += arr_num;
+                    if(arr_num >= item.size) {
+                        error(37);
+                    }
+                }
                 getsym();
                 if(sym == add) {
-                    gen(lod, lev - item.level, item.addr);
+                    gen(lod, lev - item.level, item.addr + index);
                     gen(lit, 0, 1);
                     gen(opr, 0, 2);
-                    gen(sto, lev - item.level, item.addr);
+                    gen(sto, lev - item.level, item.addr + index);
                     getsym();
                 } else if(sym == sub) {
-                    gen(lod, lev - item.level, item.addr);
+                    gen(lod, lev - item.level, item.addr + index);
                     gen(lit, 0, 1);
                     gen(opr, 0, 3);
-                    gen(sto, lev - item.level, item.addr);
+                    gen(sto, lev - item.level, item.addr + index);
                     getsym();
                 } else {
                     if(sym == becomes) {
@@ -797,7 +842,7 @@ void statement_single_item(int lev, bool* fsys) {
                     memcpy(nxtlev, fsys, sizeof(bool) * symnum);
                     expression(lev, nxtlev); //to handle expression right to the assignment symbol
                     
-                    gen(sto, lev - item.level, item.addr);
+                    gen(sto, lev - item.level, item.addr + index);
                     
                 }
             }
@@ -806,14 +851,21 @@ void statement_single_item(int lev, bool* fsys) {
     } else if(sym == readsym) {
         getsym();
         int pos;
-        if (sym == ident) {
+        int index = 0;
+        if (sym == ident || sym == array) {
             pos = position(); /* 查找要读的变量 */
         }
-        if(pos == -1 || sym != ident) {
+        if(pos == -1 || (sym != ident && sym != array)) {
             error(18);  /* read语句括号中的标识符应该是声明过的变量 */
         } else {
+            if(sym == array) {
+                index += arr_num;
+                if(index >= table[pos].size) {
+                    error(37);
+                }
+            }
             gen(opr, 0, 16);    /* 生成输入指令，读取值到栈顶 */
-            gen(sto, lev - table[pos].level, table[pos].addr); /* 将栈顶内容送入变量单元中 */
+            gen(sto, lev - table[pos].level, table[pos].addr + arr_num); /* 将栈顶内容送入变量单元中 */
             getsym();
         }
         while (!inset(sym, fsys)) { // 出错补救，直到遇到上层函数的后继符号，对这段代码保留意见
@@ -823,7 +875,11 @@ void statement_single_item(int lev, bool* fsys) {
     } else if(sym == writesym) {
         getsym();
         int pos;
-        if (sym == ident) {
+        int index = 0;
+        if(sym == array) {
+            index += arr_num;
+        }
+        if (sym == ident || sym == array) {
             pos = position();
         }
         if(pos == -1){
@@ -936,12 +992,20 @@ void factor(int lev, bool* fsys) {
     bool nxtlev[symnum];
     test(facbegsys, fsys, 11);  /* 检测因子的开始符号 */
     while(inset(sym, facbegsys)) {  /* 循环处理因子 */
-        if(sym == ident) {  /* 因子为常量或变量 */
+        int index = 0;
+        
+        if(sym == ident || sym == array) {  /* 因子为常量或变量 */
             int pos = position(); /* 查找标识符在符号表中的位置 */
             if (pos == -1) {
                 error(6);   /* 标识符未声明 */
             } else {
                 tableStruct item = table[pos];
+                if(sym == array) {
+                    index += arr_num;
+                    if(index >= item.size) {
+                        error(37);
+                    }
+                }
                 switch (item.kind) {
                     case constant:  /* 标识符为常量 */
                         gen(lit, 0, item.val);  /* 直接把常量的值入栈 */
@@ -951,6 +1015,9 @@ void factor(int lev, bool* fsys) {
                         break;
                     case function:  /* 标识符为过程 */
                         error(12);  /* 不能为过程 */
+                        break;
+                    case vector:
+                        gen(lod, lev-item.level, item.addr + index); /* 找到变量地址并将其值入栈 */
                         break;
                 }
             }
