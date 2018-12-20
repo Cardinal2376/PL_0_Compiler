@@ -37,9 +37,21 @@ int linenum;
 int num;                    /* current number value */
 char line[81];              /* line buffer for reading */
 int cx;                     /* pointer for the virtual machine */
+
 std::string current_ident;
 std::map<std::string, symbol> wsym; /* the sym of key word */
 std::map<int, symbol> ssym;         /* the sym of single char */
+
+/* used by recover */
+char rec_ch;
+enum symbol rec_sym;
+int rec_current_char, rec_line_length;
+int rec_linenum;
+int rec_num;
+char rec_line[81];
+int rec_cx;
+std::string rec_current_ident;
+
 
 /* Table Structure */
 struct tableStruct {
@@ -208,19 +220,20 @@ void init() {
 void compile() {
     //fin = fopen("C:\\Users\\10152130143\\Desktop\\sw_compiler-master\\sw_lcm.txt", "r");
     //fin = stdin;
-    /*
+    
     fin = fopen("/Users/cardinal/PL0_Compiler/test_lcm.txt", "r");
     ftable = fopen("/Users/cardinal/PL0_Compiler/ftable.txt", "w");
     fdebug = fopen("/Users/cardinal/PL0_Compiler/fdebug.txt", "w");
     ferrors = fopen("/Users/cardinal/PL0_Compiler/ferrors.txt", "w");
     fresult = fopen("/Users/cardinal/PL0_Compiler/fresult.txt", "w");
-    */
+    
+    /*
     fin = fopen("test_lcm.txt", "r");
     ftable = fopen("ftable.txt", "w");
     fdebug = fopen("fdebug.txt", "w");
     ferrors = fopen("ferrors.txt", "w");
     fresult = fopen("fresult.txt", "w");
-    
+    */
     init();        /* 初始化 */
     
     bool nxtlev[symnum];
@@ -279,7 +292,7 @@ void mulset(bool* sr, bool* s1, bool* s2, int n) {
  *  出错处理，打印出错位置和错误编码
  */
 void error(int n) {
-    printf("第 %d 行 错误: %s\n", linenum, errorinfo[n]);
+    printf("第 %d 行 错误: %s, 当前sym = %s\n", linenum, errorinfo[n], symbol_word[sym].c_str());
     fprintf(ferrors, "第 %d 行 错误: %s\n", linenum, errorinfo[n]);
     err = err + 1;
     if (err > maxerr) {
@@ -840,7 +853,7 @@ void statement_single_item(int lev, bool* fsys) {
                         error(8); //do not have assignment symbol
                     }
                     memcpy(nxtlev, fsys, sizeof(bool) * symnum);
-                    expression(lev, nxtlev); //to handle expression right to the assignment symbol
+                    expression_expand(lev, nxtlev); //to handle expression right to the assignment symbol
                     
                     gen(sto, lev - item.level, item.addr + index);
                     
@@ -919,6 +932,62 @@ void statement_single_item(int lev, bool* fsys) {
             }
         }
     }
+}
+
+void recover_store() {
+    rec_ch = ch;
+    rec_sym = sym;
+    rec_current_char = current_char;
+    rec_line_length = line_length;
+    rec_linenum = linenum;
+    rec_num = num;
+    memcpy(rec_line, line, sizeof(line));
+    rec_cx = cx;
+    rec_current_ident = current_ident;
+}
+
+void recover_load() {
+    ch = rec_ch;
+    sym = rec_sym;
+    current_char = rec_current_char;
+    line_length = rec_line_length;
+    linenum = rec_linenum;
+    num = rec_num;
+    memcpy(line, rec_line, sizeof(line));
+    cx = rec_cx;
+    current_ident = rec_current_ident;
+}
+
+/*
+ *表达式,支持连等
+ */
+void expression_expand(int lev, bool* fsys) {
+    enum symbol addop; /* 用于保存正负号 */
+    bool nxtlev[symnum];
+
+    if(sym == ident) {
+        int pos = position();
+        int index = 0;
+        if(pos == -1) {
+            error(6);
+        } else {
+            tableStruct item = table[pos];
+            recover_store();
+            getsym();
+            if(sym != becomes) {
+                recover_load();
+                expression(lev, fsys);
+            } else {
+                getsym();
+                memcpy(nxtlev, fsys, sizeof(bool) * symnum);
+                expression_expand(lev, nxtlev);                
+                gen(sto, lev - item.level, item.addr + index);
+                gen(lod, lev - item.level, item.addr + index);
+            }
+        }
+    } else {
+        expression(lev, fsys);
+    }   
 }
 
 /*
@@ -1052,6 +1121,7 @@ void factor(int lev, bool* fsys) {
  * 条件处理
  */
 void condition(int lev, bool* fsys) {
+    //printf("condition is called, current_char sym = %s\n", symbol_word[sym].c_str());
     enum symbol relop;
     bool nxtlev[symnum];
     if(sym == oddsym) { /* 准备按照odd运算处理 */
