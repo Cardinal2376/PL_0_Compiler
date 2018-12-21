@@ -220,20 +220,20 @@ void init() {
 void compile() {
     //fin = fopen("C:\\Users\\10152130143\\Desktop\\sw_compiler-master\\sw_lcm.txt", "r");
     //fin = stdin;
-    
+    /*
     fin = fopen("/Users/cardinal/PL0_Compiler/test_lcm.txt", "r");
     ftable = fopen("/Users/cardinal/PL0_Compiler/ftable.txt", "w");
     fdebug = fopen("/Users/cardinal/PL0_Compiler/fdebug.txt", "w");
     ferrors = fopen("/Users/cardinal/PL0_Compiler/ferrors.txt", "w");
     fresult = fopen("/Users/cardinal/PL0_Compiler/fresult.txt", "w");
+    */
     
-    /*
     fin = fopen("test_lcm.txt", "r");
     ftable = fopen("ftable.txt", "w");
     fdebug = fopen("fdebug.txt", "w");
     ferrors = fopen("ferrors.txt", "w");
     fresult = fopen("fresult.txt", "w");
-    */
+    
     init();        /* 初始化 */
     
     bool nxtlev[symnum];
@@ -451,16 +451,21 @@ void getsym() {
 void getch() {
     if(current_char == line_length) {
         //if char remain in buffer, o.w. get another char
+        //printf("getch()\n");
+        ch = getc(fin);
         if(feof(fin)) {
+            //printf("feof\n");
             ch = '$';
             return;
         }
+        ungetc(ch, fin);
         line_length = 0;
         current_char = 0;
         linenum++;
-        ch = ' ';
+        ch = 'p';
         while(ch != '\n') {
             if(fscanf(fin, "%c", &ch) == EOF) {
+                //printf("not feof:%c %d\n", ch, ch);
                 line[line_length] = 0;
                 break;
             }
