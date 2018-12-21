@@ -26,7 +26,7 @@ enum symbol {
     intsym,      funcsym,   forsym,     insym,     lbrace,
     rbrace,      mod,       add,        sub,       constsym,
     oddsym,      repeatsym, charsym,    lbracket,  rbracket,
-    arrsym
+    arrsym,      xorsym
 };
 
 

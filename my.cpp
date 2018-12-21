@@ -79,6 +79,7 @@ struct instruction code[cxmax]; /* 存放虚拟机代码的数组 */
 bool declbegsys[symnum];    /* 表示声明开始的符号集合 */
 bool statbegsys[symnum];    /* 表示语句开始的符号集合 */
 bool facbegsys[symnum];     /* 表示因子开始的符号集合 */
+bool termsys[symnum];     /* 表示term开始的符号集合 */
 
 FILE* fin;      /* 输入源文件 */ 
 FILE* ftable;
@@ -96,7 +97,7 @@ std::vector<std::string> symbol_word {
     "intsym",   "funcsym",  "forsym",   "insym",    "lbrace",
     "rbrace",   "mod",      "add",      "sub",      "constsym",
     "oddsym",   "repeatsym", "charsym", "lbracket", "rbracket",
-    "arrsym"
+    "arrsym",   "xorsym"
 };
 int arr_num;
 int err;        /* ERROR Counter */
@@ -130,6 +131,7 @@ void init() {
     wsym["if"] = ifsym;
     wsym["in"] = insym;
     wsym["odd"] = oddsym;
+    wsym["xor"] = xorsym;
     wsym["write"] = writesym;
     wsym["read"] = readsym;
     wsym["repeat"] = repeatsym;
@@ -155,6 +157,7 @@ void init() {
     memset(declbegsys, false, sizeof declbegsys);
     memset(statbegsys, false, sizeof statbegsys);
     memset(facbegsys, false, sizeof facbegsys);
+    memset(termsys, false, sizeof facbegsys);
     
     /* 设置声明开始符号集 */
     declbegsys[intsym] = true;
@@ -176,7 +179,13 @@ void init() {
     facbegsys[arrsym] = true;
     facbegsys[number] = true;
     facbegsys[lparen] = true;
-    
+
+    /* 设置term开始的符号集合 */
+    termsys[mod] = true;
+    termsys[slash] = true;
+    termsys[xorsym] = true;
+    termsys[times] = true;
+
     strcpy(errorinfo[0], "声明符号后面缺少标识符");
     strcpy(errorinfo[1], "缺少';'");
     strcpy(errorinfo[2], "语句或者函数声明开始符号错误");
@@ -1093,7 +1102,7 @@ void term(int lev, bool* fsys) {
     nxtlev[mod] = true;
     
     factor(lev, nxtlev);   /* 处理因子 */
-    while(sym == times || sym == slash || sym == mod) {
+    while(inset(sym, termsys)) {
         mulop = sym;
         getsym();
         factor(lev, nxtlev);
@@ -1101,8 +1110,10 @@ void term(int lev, bool* fsys) {
             gen(opr, 0, 4); /* 生成乘法指令 */
         } else if (mulop == slash) {
             gen(opr, 0, 5); /* 生成除法指令 */
-        } else {
-            gen(opr, 0, 17);
+        } else if(mulop == xorsym){ 
+            gen(opr, 0, 18); //亦或运算
+        } else if(mulop == mod){
+            gen(opr, 0, 17); //求余运算
         }
     }
 }
@@ -1325,6 +1336,9 @@ void interpret() {
                         t = t - 1;
                         s[t] = s[t] % s[t + 1];
                         break;
+                    case 18: //XOR
+                        t = t - 1;
+                        s[t] = s[t] ^ s[t + 1];
                 }
                 break;
             case lod:   /* 取相对当前过程的数据基地址为a的内存的值到栈顶 */
