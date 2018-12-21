@@ -162,6 +162,7 @@ void init() {
     /* 设置声明开始符号集 */
     declbegsys[intsym] = true;
     declbegsys[charsym] = true;
+    declbegsys[constsym] = true;
     
     /* 设置语句开始符号集 */
     statbegsys[callsym] = true;
@@ -223,6 +224,7 @@ void init() {
     strcpy(errorinfo[38], "数组定义出错");
     strcpy(errorinfo[39], "数组大小超过限制");
     strcpy(errorinfo[40], "缺少'['");
+    strcpy(errorinfo[41], "常量定义缺少类型");
 
     err = 0;
     current_char = line_length = 0;
@@ -539,7 +541,7 @@ void block(int lev, bool* fsys) {
     }
     if(sym == nul) sym = period;
     do {
-        while(sym == intsym || sym == charsym) { /* to handle declaration statement */
+        if(sym == intsym || sym == charsym) { /* to handle declaration statement */
             symbol last_sym = sym;
             getsym();
             vardeclaration(lev, &dx, last_sym);    
@@ -550,11 +552,27 @@ void block(int lev, bool* fsys) {
                 error(9); /* 漏掉了分号 */
             }
             //printf("processing declaration\n");
-        }        
+        } else if(sym == constsym) {
+            getsym();
+            if(sym == intsym || sym == charsym) {
+                symbol last_sym = sym;
+                getsym();
+                constdeclaration(lev, &dx, last_sym);
+
+                if (sym == semicolon) {
+                    getsym();
+                } else {
+                    error(9); /* 漏掉了分号 */
+                }
+            } else {
+                error(41);
+            }
+
+        }
         if (sym == period) break;
         //memcpy(nxtlev, statbegsys, sizeof(bool) * symnum);
         //nxtlev[ident] = true;
-        test(statbegsys, declbegsys, 7);
+        //test(statbegsys, declbegsys, 7);
     } while (inset(sym, declbegsys));    /* 直到没有声明符号 */
     
     code[table[tx0].addr].a = cx;    /* 把前面生成的跳转语句的跳转位置改成当前位置 */
@@ -682,6 +700,29 @@ void vardeclaration(int lev, int* pdx, symbol last_sym) {
         error(0); // ident should be behind int & var symbol
     }
 }
+
+/**
+ * [to handle constant variable declaration]
+ */
+void constdeclaration(int lev, int* pdx, symbol last_sym) {
+    if(sym == ident) {
+        getsym();
+        if(sym == becomes) {
+            getsym();
+            if(sym == number) { 
+                enter(constant, lev, pdx, last_sym); // enter info into the table
+                getsym();        
+            } else {
+                error(32); //number should follow assignment symbol
+            }
+        } else {
+            error(8); //assignment symbol should follow ident
+        } 
+    } else {
+        error(0); // ident should be behind int & char symbol
+    }
+}
+
 
 /*
  * statement process
@@ -857,15 +898,30 @@ void statement_single_item(int lev, bool* fsys) {
                 } else {
                     error(35);
                 }
-            
-                if(sym == becomes) {
+                if(sym == add) {
+                    gen(cpy, 0, 0);
+                    gen(loda, lev - item.level, item.addr);
+                    gen(lit, 0, 1);
+                    gen(opr, 0, 2);
+                    gen(stoa, lev - item.level, item.addr);
+                    getsym();
+                } else if(sym == sub) {
+                    gen(cpy, 0, 0);
+                    gen(loda, lev - item.level, item.addr);
+                    gen(lit, 0, 1);
+                    gen(opr, 0, 3);
+                    gen(stoa, lev - item.level, item.addr);
                     getsym();
                 } else {
-                    error(8); //do not have assignment symbol
+                    if(sym == becomes) {
+                        getsym();
+                    } else {
+                        error(8); //do not have assignment symbol
+                    }
+                    memcpy(nxtlev, fsys, sizeof(bool) * symnum);
+                    expression_expand(lev, nxtlev); //to handle expression right to the assignment symbol
+                    gen(stoa, lev - item.level, item.addr);    
                 }
-                memcpy(nxtlev, fsys, sizeof(bool) * symnum);
-                expression_expand(lev, nxtlev); //to handle expression right to the assignment symbol
-                gen(stoa, lev - item.level, item.addr);
             } else if(item.kind == variable){
                 getsym();
                 if(sym == add) {
@@ -1043,6 +1099,9 @@ void expression_expand(int lev, bool* fsys) {
                     gen(sto, lev - item.level, item.addr);
                     gen(lod, lev - item.level, item.addr);
                 }
+            } else if(item.kind == constant) {
+                recover_load();
+                expression(lev, fsys);
             } else {
                 error(7);
             }
@@ -1148,6 +1207,9 @@ void factor(int lev, bool* fsys) {
                     gen(loda, lev-item.level, item.addr);
                 } else if(item.kind == variable) {
                     gen(lod, lev-item.level, item.addr); /* 找到变量地址并将其值入栈 */
+                    getsym();
+                } else if(item.kind == constant) {
+                    gen(lit, 0, item.val);
                     getsym();
                 } else {
                     error(12); //不能是函数

@@ -69,9 +69,10 @@ void statement_item(int lev, bool* fsys);
 void statement_single_item(int lev, bool* fsys);
 void listall();
 int position();
-void enter(enum object k, int lev, int* pdx);
+void enter(enum object k, int lev, int* pdx, symbol last_sym);
 int base(int l, int* s, int b);
 void vardeclaration(int lev, int* pdx, symbol last_sym);
+void constdeclaration(int lev, int* pdx, symbol last_sym);
 void recover_load();
 void recover_store();
 #endif
