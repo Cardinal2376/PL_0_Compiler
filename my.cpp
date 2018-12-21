@@ -9,6 +9,7 @@
 #include "compile.h"
 
 #include <iostream>
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -62,6 +63,7 @@ struct tableStruct {
     int addr;
     int size;
     int type;               /* int or char */
+    std::vector<int> limits;
 };
 
 std::vector<tableStruct> table;
@@ -99,6 +101,7 @@ std::vector<std::string> symbol_word {
     "oddsym",   "repeatsym", "charsym", "lbracket", "rbracket",
     "arrsym",   "xorsym"
 };
+std::vector<int> arr_index;
 int arr_num;
 int err;        /* ERROR Counter */
 char errorinfo[100][100];
@@ -642,8 +645,17 @@ void enter(enum object k, int lev, int* pdx, symbol last_sym) {
             table_item.level = lev;
             table_item.addr = (*pdx);
             table_item.type = last_sym == intsym ? 0 : 1;
-            table_item.size = arr_num;
-            (*pdx) += arr_num;
+            int tmp_num = 1;
+            for(int i = arr_index.size() - 1; i >= 0; i--) {
+                table_item.limits.push_back(tmp_num);
+                tmp_num *= arr_index[i];
+            }
+            //table_item.limits.reverse(table_item.limits.size());
+            std::reverse(table_item.limits.begin(), table_item.limits.end());
+            if(tmp_num >= stacksize) {
+                error(39);
+            }
+            (*pdx) += tmp_num;
             break;
     }
     table.push_back(table_item);
@@ -671,26 +683,28 @@ int position() {
  */
 void vardeclaration(int lev, int* pdx, symbol last_sym) {
     if(sym == ident) {
+        arr_index.clear();
         recover_store();
         getsym();
         if(sym == lbracket) {
-            getsym();
-            if(sym == number) {
-                arr_num = num;
-                if(num >= stacksize) {
-                    error(39);
-                }
+            while(sym == lbracket) {
                 getsym();
-                if(sym == rbracket) {
+                if(sym == number) {
+                    arr_index.push_back(num);
+                    if(num >= stacksize) {
+                        error(39);
+                    }
                     getsym();
-                    enter(array, lev, pdx, last_sym); // enter info into the table
+                    if(sym == rbracket) {
+                        getsym();
+                    } else {
+                        error(35);
+                    }
                 } else {
-                    error(35);
+                    error(38);
                 }
-
-            } else {
-                error(38);
             }
+            enter(array, lev, pdx, last_sym); // enter info into the table
         } else {
             recover_load();
             enter(variable, lev, pdx, last_sym); // enter info into the table
@@ -1303,6 +1317,9 @@ void listall() {
 }
 
 
+
+
+
 /*
  * 解释程序
  */
@@ -1462,6 +1479,3 @@ int base(int l, int* s, int b) {
     }
     return b1;
 }
-
-
-
