@@ -26,7 +26,7 @@ enum symbol {
     intsym,      funcsym,   forsym,     insym,     lbrace,
     rbrace,      mod,       add,        sub,       constsym,
     oddsym,      repeatsym, charsym,    lbracket,  rbracket,
-    array
+    arrsym
 };
 
 
@@ -35,7 +35,7 @@ enum object {
     constant,
     variable,
     function,
-    vector
+    array
 };
 
 /* 虚拟机代码指令 */
@@ -43,6 +43,7 @@ enum fct {
     lit,     opr,     lod,
     sto,     cal,     ini,
     jmp,     jpc,     jeq,
+    loda,    stoa,    cpy
 };
 
 void compile();
@@ -71,5 +72,7 @@ int position();
 void enter(enum object k, int lev, int* pdx);
 int base(int l, int* s, int b);
 void vardeclaration(int lev, int* pdx, symbol last_sym);
+void recover_load();
+void recover_store();
 #endif
 
