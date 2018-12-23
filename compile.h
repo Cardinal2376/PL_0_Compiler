@@ -14,7 +14,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
-
+#include <string>
+#include <vector>
 
 /* 符号 */
 enum symbol {
@@ -26,7 +27,7 @@ enum symbol {
     intsym,      funcsym,   forsym,     insym,     lbrace,
     rbrace,      mod,       add,        sub,       constsym,
     oddsym,      repeatsym, charsym,    lbracket,  rbracket,
-    arrsym,      xorsym
+    arrsym,      xorsym,    mainsym
 };
 
 
@@ -45,6 +46,17 @@ enum fct {
     jmp,     jpc,     jeq,
     loda,    stoa,    cpy
 };
+/* Table Structure */
+struct tableStruct {
+    std::string name;
+    enum object kind;       /* const, variable or procedure */
+    int val;                /* only for const */
+    int level;
+    int addr;
+    int size;
+    int type;               /* int or char */
+    std::vector<int> limits;
+};
 
 void compile();
 void error(int n);
@@ -58,6 +70,7 @@ void addset(bool* sr, bool* s1, bool* s2, int n);
 void subset(bool* sr, bool* s1, bool* s2, int n);
 void mulset(bool* sr, bool* s1, bool* s2, int n);
 void block(int lev, bool* fsys);
+void program(int lev, bool* fsys);
 void interpret();
 void factor(int lev, bool* fsys);
 void term(int lev, bool* fsys);
@@ -75,5 +88,6 @@ void vardeclaration(int lev, int* pdx, symbol last_sym);
 void constdeclaration(int lev, int* pdx, symbol last_sym);
 void recover_load();
 void recover_store();
+void array_element(tableStruct item, int lev, bool* fsys);
 #endif
 

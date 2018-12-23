@@ -24,13 +24,13 @@
 #define addrmax 2048  /* 地址上界*/
 #define levmax 3      /* 最大允许过程嵌套声明层数*/
 #define cxmax 200     /* 最多的虚拟机代码数 */
-#define stacksize 500 /* 运行时数据栈元素最多为500个 */
-#define symnum 60
-#define fctnum 9
 
 const int max_length = 10;  /* max length of ident */
 const int table_max = 100;  /* capacity of the symbol table */
+const int symnum = 60;
+const int fctnum = 12;      
 const int maxerr = 30;
+const int stacksize = 510000;   //stacksize in running time
 char ch;                    /* used by function "getch", to read and store a character */
 enum symbol sym;            /* current symbol */
 int current_char, line_length;  /* used by function "getch" */
@@ -54,18 +54,6 @@ int rec_cx;
 std::string rec_current_ident;
 
 
-/* Table Structure */
-struct tableStruct {
-    std::string name;
-    enum object kind;       /* const, variable or procedure */
-    int val;                /* only for const */
-    int level;
-    int addr;
-    int size;
-    int type;               /* int or char */
-    std::vector<int> limits;
-};
-
 std::vector<tableStruct> table;
 /* 虚拟机代码结构 */
 struct instruction {
@@ -88,9 +76,10 @@ FILE* ftable;
 FILE* fdebug;
 FILE* ferrors;
 FILE* fresult;
+FILE* fcode;
 
 /* On Developing */
-std::vector<std::string> symbol_word {
+std::vector<std::string> symbol_word = {
     "nul",      "ident",    "number",   "plus",     "minus",
     "times",    "slash",    "eql",      "neq",      "lss",
     "leq",      "gtr",      "geq",      "lparen",   "rparen",
@@ -99,7 +88,7 @@ std::vector<std::string> symbol_word {
     "intsym",   "funcsym",  "forsym",   "insym",    "lbrace",
     "rbrace",   "mod",      "add",      "sub",      "constsym",
     "oddsym",   "repeatsym", "charsym", "lbracket", "rbracket",
-    "arrsym",   "xorsym"
+    "arrsym",   "xorsym",   "mainsym"
 };
 std::vector<int> arr_index;
 int arr_num;
@@ -141,6 +130,7 @@ void init() {
     wsym["int"] = intsym;
     wsym["while"] = whilesym;
     wsym["char"] = charsym;
+    wsym["main"] = mainsym;
     
     /* 设置指令名称 */
     strcpy(mnemonic[lit], "lit");
@@ -248,11 +238,13 @@ void compile() {
     fresult = fopen("/Users/cardinal/PL0_Compiler/fresult.txt", "w");
     */
     
-    fin = fopen("test_lcm.txt", "r");
+    fin = fopen("input.txt", "r");
     ftable = fopen("ftable.txt", "w");
     fdebug = fopen("fdebug.txt", "w");
     ferrors = fopen("ferrors.txt", "w");
     fresult = fopen("fresult.txt", "w");
+    fcode = fopen("fcode.txt", "w");
+
     
     init();        /* 初始化 */
     
@@ -261,7 +253,7 @@ void compile() {
     nxtlev[period] = true;
     
     getsym();
-    block(0, nxtlev);
+    program(0, nxtlev);
     
     if (sym != period) {
         error(5);
@@ -281,6 +273,7 @@ void compile() {
     fclose(fdebug);
     fclose(ferrors);
     fclose(fresult);
+    fclose(fcode);
 }
 
 /*
@@ -324,18 +317,18 @@ void error(int n) {
  word analysis
  */
 void getsym() {
-    printf("sym = ");
-    std::cout << symbol_word[sym] << std::endl;
+    //printf("sym = ");
+    //std::cout << symbol_word[sym] << std::endl;
     //remove blanks
     while(ch == ' ' || ch == '\n' || ch == '\t') {
         getch();
     }
     if(ch == '$') sym = period;
-    else if(isalpha(ch)) {
+    else if(isalpha(ch) || ch == '_') {
         //recognize symbol or ident
         std::string ident_in = "";
         //这里长度报错怎么办
-        while(isalnum(ch) && ident_in.length() < max_length) {
+        while((isalnum(ch) || ch == '_') && ident_in.length() < max_length) {
             ident_in.push_back(ch);
             getch();
         }
@@ -521,20 +514,19 @@ void test(bool* s1, bool* s2, int n) {
     }
 }
 
-/*
- syntax analysis
- lev: current level
- tx:  tail of the table
- */
-void block(int lev, bool* fsys) {
+
+void program(int lev, bool* fsys) {
     int dx;
     int tx0 = (int)table.size(); /* preserve original tx */
     int cx0; /* preserve original cx */
     
     bool nxtlev[symnum];
+
     dx = 3; /* leave 3 space for Static Link, Dynamic Link and Return Address */
     tableStruct item;
+    item.name = "main";
     item.kind = function;
+    item.level = 0;
     item.addr = cx;
     table.push_back(item);
     gen(jmp, 0, 0); /* generate jmp instruction but left for filled in later */
@@ -543,6 +535,42 @@ void block(int lev, bool* fsys) {
         error(30);
     }
     if(sym == nul) sym = period;
+    while(sym == funcsym) {
+        getsym();
+        if (sym == ident) {
+            enter(function, lev, &dx, sym); /* 填写符号表 */
+            getsym();
+        } else {
+            error(0);   /* procedure后应为标识符 */
+        }
+
+        if (sym == lparen) getsym();
+        else error(19);
+        if (sym == rparen) getsym();
+        else error(19);
+        if (sym == lbrace) getsym();
+        else error(20);
+
+        memcpy(nxtlev, fsys, sizeof(bool) * symnum);
+        nxtlev[rbrace] = true;
+        block(lev, nxtlev);    
+        if(sym == rbrace) {
+            getsym();
+            memcpy(nxtlev, statbegsys, sizeof(bool) * symnum);
+            nxtlev[funcsym] = true;
+            //test(nxtlev, fsys, 6);
+        } else {
+            error(38);  /* 漏掉了'}' */
+        }
+    }
+    if(sym == mainsym) {
+        getsym();
+    }
+    if (sym == lbrace) {
+        getsym();
+    } else {
+        error(20);
+    }
     do {
         if(sym == intsym || sym == charsym) { /* to handle declaration statement */
             symbol last_sym = sym;
@@ -585,6 +613,15 @@ void block(int lev, bool* fsys) {
     gen(ini, 0, dx);                /* 生成指令，此指令执行时在数据栈中为被调用的过程开辟dx个单元的数据区 */
     
     //printf("tail index = %d\n", (int)table.size());
+    
+    memcpy(nxtlev, fsys, sizeof(bool) * symnum);    /* 每个后继符号集合都包含上层后继符号集合，以便补救 */
+    nxtlev[semicolon] = true;
+    nxtlev[rbrace] = true;
+    statement(lev, nxtlev);    
+    gen(opr, 0, 0);                     /* 每个过程出口都要使用的释放数据段指令 */
+    memset(nxtlev, 0, sizeof(bool) * symnum);   /* 分程序没有补救集合 */
+    if (sym == rbrace) getsym();
+    else error(21);
     for (int i = 0; i < table.size(); i++) {
         switch (table[i].kind) {
             case constant:
@@ -602,6 +639,63 @@ void block(int lev, bool* fsys) {
         }
     }
     fprintf(ftable,"\n");
+
+}
+/*
+ syntax analysis
+ lev: current level
+ tx:  tail of the table
+ */
+void block(int lev, bool* fsys) {
+    int dx;
+    int tx0 = (int)table.size(); /* preserve original tx */
+    int cx0 = cx; /* preserve original cx */
+    
+    bool nxtlev[symnum];
+    dx = 3; /* leave 3 space for Static Link, Dynamic Link and Return Address */ 
+    if(lev > 1) { /* too much level */
+        error(30);
+    }
+    if(sym == nul) sym = period;
+    do {
+        if(sym == intsym || sym == charsym) { /* to handle declaration statement */
+            symbol last_sym = sym;
+            getsym();
+            vardeclaration(lev, &dx, last_sym);    
+            
+            if (sym == semicolon) {
+                getsym();
+            } else {
+                error(9); /* 漏掉了分号 */
+            }
+            //printf("processing declaration\n");
+        } else if(sym == constsym) {
+            getsym();
+            if(sym == intsym || sym == charsym) {
+                symbol last_sym = sym;
+                getsym();
+                constdeclaration(lev, &dx, last_sym);
+
+                if (sym == semicolon) {
+                    getsym();
+                } else {
+                    error(9); /* 漏掉了分号 */
+                }
+            } else {
+                error(41);
+            }
+
+        }
+        if (sym == period) break;
+        //memcpy(nxtlev, statbegsys, sizeof(bool) * symnum);
+        //nxtlev[ident] = true;
+        //test(statbegsys, declbegsys, 7);
+    } while (inset(sym, declbegsys));    /* 直到没有声明符号 */
+    
+    gen(ini, 0, dx);                /* 生成指令，此指令执行时在数据栈中为被调用的过程开辟dx个单元的数据区 */
+    
+    //printf("tail index = %d\n", (int)table.size());
+    
     memcpy(nxtlev, fsys, sizeof(bool) * symnum);    /* 每个后继符号集合都包含上层后继符号集合，以便补救 */
     nxtlev[semicolon] = true;
     statement(lev, nxtlev);
@@ -640,6 +734,7 @@ void enter(enum object k, int lev, int* pdx, symbol last_sym) {
             break;
         case function:  /* 过程 */
             table_item.level = lev;
+            table_item.addr = cx;
             break;
         case array:
             table_item.level = lev;
@@ -878,6 +973,33 @@ void statement_item(int lev, bool* fsys) {
         }
         gen(jmp, 0, cx2+2);
         code[cx2].a = cx;
+    } else if(sym == callsym) {
+        getsym();
+        if (sym != ident) {
+            error(0);   /* call后应为标识符 */
+        } else {
+            int pos = position();
+            if (pos == -1) {
+                error(6);   /* 过程名未找到 */
+            } else {
+                tableStruct item = table[pos];
+                if (item.kind == function) {
+                    gen(cal, lev-item.level, item.addr); /* 生成call指令 */
+                } else {
+                    error(31);  /* call后标识符类型应为过程 */
+                }
+            }
+            getsym();
+            if (sym == lparen) getsym();
+            else error(19);
+            if (sym == rparen) getsym();
+            else error(19);
+        }
+        if(sym == semicolon) {
+            getsym();
+        } else {
+            error(1);
+        }
     } else {
         statement_single_item(lev, fsys);
         if(sym == semicolon) {
@@ -899,19 +1021,7 @@ void statement_single_item(int lev, bool* fsys) {
             tableStruct item = table[pos];
             if(item.kind == array) {
                 getsym();
-                if(sym == lbracket) {
-                    getsym();
-                } else {
-                    error(40);
-                }
-                memcpy(nxtlev, fsys, sizeof(bool) * symnum);
-                nxtlev[rbracket] = true;
-                expression(lev, fsys);
-                if(sym == rbracket) {
-                    getsym();
-                } else {
-                    error(35);
-                }
+                array_element(item, lev, fsys); //process array_element
                 if(sym == add) {
                     gen(cpy, 0, 0);
                     gen(loda, lev - item.level, item.addr);
@@ -970,22 +1080,26 @@ void statement_single_item(int lev, bool* fsys) {
     } else if(sym == readsym) {
         getsym();
         int pos;
-        int index = 0;
-        if (sym == ident || sym == arrsym) {
-            pos = position(); /* 查找要读的变量 */
+        if (sym == ident) {
+            pos = position();
         }
-        if(pos == -1 || (sym != ident && sym != arrsym)) {
+        if(pos == -1 || sym != ident) {
             error(18);  /* read语句括号中的标识符应该是声明过的变量 */
         } else {
-            if(sym == arrsym) {
-                index += arr_num;
-                if(index >= table[pos].size) {
-                    error(37);
-                }
+            tableStruct item = table[pos];
+            if(item.kind == array) {
+                getsym();
+                array_element(item, lev, fsys);
+                gen(opr, 0, 16);    /* 生成输入指令，读取值到栈顶 */
+                gen(stoa, lev - item.level, item.addr); /* 将栈顶内容变址送入变量单元中 */
+            } else if(item.kind == variable) {
+                getsym();
+                gen(opr, 0, 16);    
+                gen(sto, lev - item.level, item.addr);
+            } else {
+                error(18);
             }
-            gen(opr, 0, 16);    /* 生成输入指令，读取值到栈顶 */
-            gen(sto, lev - table[pos].level, table[pos].addr + arr_num); /* 将栈顶内容送入变量单元中 */
-            getsym();
+            
         }
         while (!inset(sym, fsys)) { // 出错补救，直到遇到上层函数的后继符号，对这段代码保留意见
             getsym();
@@ -994,20 +1108,25 @@ void statement_single_item(int lev, bool* fsys) {
     } else if(sym == writesym) {
         getsym();
         int pos;
-        int index = 0;
-        if(sym == arrsym) {
-            index += arr_num;
-        }
-        if (sym == ident || sym == arrsym) {
+        if (sym == ident) {
             pos = position();
         }
         if(pos == -1){
             error(18);
         } else {
-            memcpy(nxtlev, fsys, sizeof nxtlev);
-            expression(lev, nxtlev);
-            gen(opr, 0, 14);
-            gen(opr, 0, 15);
+            tableStruct item = table[pos];
+            if(item.kind == variable && item.type == 1) {
+                getsym();
+                gen(lod, 0, item.addr);
+                gen(opr, 0, 19);
+                gen(opr, 0, 15);
+            } else{
+                memcpy(nxtlev, fsys, sizeof nxtlev);
+                expression(lev, nxtlev);
+                gen(opr, 0, 14);
+                gen(opr, 0, 15);    
+            }
+            
         }
     } else if(sym == callsym) {
         getsym();
@@ -1080,17 +1199,7 @@ void expression_expand(int lev, bool* fsys) {
             recover_store();
             getsym();
             if(item.kind == array) {
-                if(sym == lbracket) {
-                    getsym();
-                } else {
-                    error(40);
-                }
-                expression(lev, fsys);
-                if(sym == rbracket) {
-                    getsym();
-                } else {
-                    error(35);
-                }
+                array_element(item, lev, fsys);
                 if(sym != becomes) {
                     recover_load();
                     expression(lev, fsys);
@@ -1124,6 +1233,8 @@ void expression_expand(int lev, bool* fsys) {
         expression(lev, fsys);
     }   
 }
+
+
 
 /*
  *表达式
@@ -1191,6 +1302,27 @@ void term(int lev, bool* fsys) {
     }
 }
 
+
+void array_element(tableStruct item, int lev, bool* fsys) {
+    for(int i = 0; i < item.limits.size(); i++) {
+        if(sym == lbracket) {
+            getsym();
+        } else {
+            error(40);
+        }
+        expression(lev, fsys);
+        gen(lit, 0, item.limits[i]);
+        gen(opr, 0, 4); //乘法
+        if(i != 0) {
+            gen(opr, 0, 2); //加法
+        }
+        if(sym == rbracket) {
+            getsym();
+        } else {
+            error(35);
+        }
+    }
+}
 /*
  * 因子处理
  */
@@ -1207,17 +1339,7 @@ void factor(int lev, bool* fsys) {
                 tableStruct item = table[pos];
                 if(item.kind == array) {
                     getsym();
-                    if(sym == lbracket) {
-                        getsym();
-                    } else {
-                        error(40);
-                    }
-                    expression(lev, fsys);
-                    if(sym == rbracket) {
-                        getsym();
-                    } else {
-                        error(35);
-                    }
+                    array_element(item, lev, fsys);
                     gen(loda, lev-item.level, item.addr);
                 } else if(item.kind == variable) {
                     gen(lod, lev-item.level, item.addr); /* 找到变量地址并将其值入栈 */
@@ -1312,7 +1434,7 @@ void condition(int lev, bool* fsys) {
 void listall() {
     int i;
     for (i = 0; i < cx; i++) {
-        printf("%d %s %d %d\n", i, mnemonic[code[i].f], code[i].l, code[i].a);
+        fprintf(fcode, "%d %s %d %d\n", i, mnemonic[code[i].f], code[i].l, code[i].a);
     }
 }
 
@@ -1418,6 +1540,11 @@ void interpret() {
                     case 18: //XOR
                         t = t - 1;
                         s[t] = s[t] ^ s[t + 1];
+                        break;
+                    case 19:
+                        printf("%c", s[t]);
+                        fprintf(fresult, "%c", s[t]);
+                        break;
                 }
                 break;
             case lod:   /* 取相对当前过程的数据基地址为a的内存的值到栈顶 */
