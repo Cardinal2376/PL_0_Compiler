@@ -22,4 +22,4 @@ A PL/0(X0) language compiler, written in CPP. Originally for ECNUCS compiler cou
 7. 扩充带参数、返回值的过程
 
 **other bonus:**
-  1. 支持单行与多行注释 /**/与//
+  1. 支持单行与多行注释 /**/与// 
