@@ -23,9 +23,9 @@ A PL/0(X0) language compiler, written in CPP. Originally for ECNUCS compiler cou
 
 **other bonus:**
   1. 支持单行与多行注释 /**/与//  
-###编译命令：
+### 编译命令：
 g++ -o test my.cpp main.cpp -std=c++11  
-###运行命令：
+### 运行命令：
 ./test  
 把输入代码写在同目录的input.txt里  
 
